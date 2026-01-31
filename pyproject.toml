@@ -1,0 +1,9 @@
+[project]
+name = "architecture-insuretech"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "locust>=2.43.1",
+]

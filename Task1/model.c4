@@ -1,0 +1,138 @@
+specification {
+
+    color clr-white #fff
+
+    element browser {
+        style {
+            shape browser
+        }
+    }
+    element service {
+        style {
+            color clr-white
+        }
+    }
+
+    element region {
+        style {
+            color clr-white
+        }
+    }
+}
+
+model {
+
+    user = browser 'Users' {}
+
+    yc_dns = service "Yandex Cloud DNS"
+
+    cdn = service 'Cloud CDN' {
+        style {
+            icon @icons/cloud_dns.svg
+        }
+    }
+
+    s3 = service 'Object Storage' {
+        style {
+            icon @icons/object_storage.svg
+        }
+    }
+
+    region_a = region "Region A" {
+        load_balancer_a = service "Application LB" {
+            style {
+                icon @icons/network_load_balancer.svg
+            }
+        }
+
+        ks_a = service "Kubernetes Cluster" {
+            style {
+                icon @icons/managed_kubernetes.svg
+            }
+        }
+
+        ingress_a = service 'Ingress'
+        controller_a = service 'Contreller'
+
+        psql_cluster_a = service "PostgreSQL Cluster" {
+            psql_primary_a = service "Managed PostgreSQL(primary)" {
+                style {
+                    icon @icons/managed_postgresql.svg
+                }
+            }
+            psql_replica_a = service "Managed PostgreSQL(replica)" {
+                style {
+                    icon @icons/managed_postgresql.svg
+                }
+            }
+            psql_backup_a = service "Object Storage(backups)" {
+                style {
+                    icon @icons/object_storage.svg
+                }
+            }
+        }
+        psql_primary_a -> psql_replica_a 'Replication'
+        psql_replica_a -> psql_backup_a 'Backups + WAL archive'
+
+        yc_dns -> load_balancer_a ''
+        load_balancer_a -> ks_a "Health check"
+        ks_a -> controller_a ''
+        controller_a -> psql_backup_a ''
+    }
+
+    region_b = region "Region B" {
+        load_balancer_b = service "Application LB" {
+            style {
+                icon @icons/network_load_balancer.svg
+            }
+        }
+
+        ks_b = service "Kubernetes Cluster" {
+            style {
+                icon @icons/managed_kubernetes.svg
+            }
+        }
+
+        ingress_b = service 'Ingress'
+        controller_b = service 'Contreller'
+
+        psql_cluster_b = service "PostgreSQL Cluster" {
+            psql_primary_b = service "Managed PostgreSQL(primary)" {
+                style {
+                    icon @icons/managed_postgresql.svg
+                }
+            }
+            psql_replica_b = service "Managed PostgreSQL(replica)" {
+                style {
+                    icon @icons/managed_postgresql.svg
+                }
+            }
+            psql_backup_b = service "Object Storage(backups)" {
+                style {
+                    icon @icons/object_storage.svg
+                }
+            }
+        }
+        psql_primary_b -> psql_replica_b 'Replication'
+        psql_replica_b -> psql_backup_b 'Backups + WAL archive'
+
+        yc_dns -> load_balancer_b ''
+        load_balancer_b -> ks_b "Health check"
+        ks_b -> controller_b ''
+        controller_b -> psql_backup_b ''
+    }
+
+    user -> yc_dns
+    yc_dns -> cdn
+    yc_dns -> s3
+}
+
+views {
+    view  {
+        title 'Schema'
+
+        include user, yc_dns, cdn, s3, region_a.**, region_b.**
+
+        autoLayout LeftRight
+    }
+}

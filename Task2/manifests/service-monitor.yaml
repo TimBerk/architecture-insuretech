@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: scaletestapp
+  namespace: insuretech
+  labels:
+    app: scaletestapp
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: scaletestapp
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
