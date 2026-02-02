@@ -24,107 +24,119 @@ model {
 
     user = browser 'Users' {}
 
-    yc_dns = service "Yandex Cloud DNS"
+    yc_dns = service "Yandex Cloud DNS" {
+        description "Глобальная балансировка (DNS/GSLB): отдаёт адреса Region A и Region B (active-active), исключает площадку из ответа при падении health check."
+    }
 
     cdn = service 'Cloud CDN' {
-        style {
-            icon @icons/cloud_dns.svg
-        }
+        style { icon @icons/cloud_dns.svg }
+        description "CDN для статического контента: снижает нагрузку на origin и ускоряет отдачу."
     }
 
     s3 = service 'Object Storage' {
-        style {
-            icon @icons/object_storage.svg
-        }
+        style { icon @icons/object_storage.svg }
+        description "Object Storage для статических объектов и (опционально) кросс-регионного хранения/копирования бэкапов."
     }
 
     region_a = region "Region A" {
         load_balancer_a = service "Application LB" {
-            style {
-                icon @icons/network_load_balancer.svg
-            }
+            style { icon @icons/network_load_balancer.svg }
+            description "Региональный L7 балансировщик. Health check: HTTP GET /healthz на Ingress в Region A."
         }
 
         ks_a = service "Kubernetes Cluster" {
-            style {
-                icon @icons/managed_kubernetes.svg
-            }
+            style { icon @icons/managed_kubernetes.svg }
+            description "Независимый кластер в регионе (multi-cluster, не stretched). Масштабирование: HPA; доступность: распределение Pod'ов по зонам (topology spread)."
         }
 
-        ingress_a = service 'Ingress'
-        controller_a = service 'Contreller'
+        ingress_a = service 'Ingress' {
+            description "Входная точка в кластер: маршрутизация /api к сервисам. Экспортирует /healthz для проверок LB."
+        }
+
+        controller_a = service 'Controller' {
+            description "Stateless-компонент. Горизонтальное масштабирование (HPA по CPU/метрикам нагрузки)."
+        }
 
         psql_cluster_a = service "PostgreSQL Cluster" {
+            description "PostgreSQL в регионе: primary + replica. Резервное копирование: full backup + WAL-архив (PITR) в Object Storage."
             psql_primary_a = service "Managed PostgreSQL(primary)" {
-                style {
-                    icon @icons/managed_postgresql.svg
-                }
+                style { icon @icons/managed_postgresql.svg }
+                description "Primary-узел БД (запись)."
             }
             psql_replica_a = service "Managed PostgreSQL(replica)" {
-                style {
-                    icon @icons/managed_postgresql.svg
-                }
+                style { icon @icons/managed_postgresql.svg }
+                description "Replica-узел БД (чтение + источник для быстрого фейловера внутри региона)."
             }
             psql_backup_a = service "Object Storage(backups)" {
-                style {
-                    icon @icons/object_storage.svg
-                }
+                style { icon @icons/object_storage.svg }
+                description "Хранилище бэкапов: base backup + WAL archive для PITR."
             }
         }
-        psql_primary_a -> psql_replica_a 'Replication'
-        psql_replica_a -> psql_backup_a 'Backups + WAL archive'
 
-        yc_dns -> load_balancer_a ''
-        load_balancer_a -> ks_a "Health check"
-        ks_a -> controller_a ''
-        controller_a -> psql_backup_a ''
+        // Балансировка и health check (внутри региона)
+        load_balancer_a -> ingress_a "Health check: GET /healthz"
+        ingress_a -> controller_a "HTTP /api"
+
+        // Доступ к БД и защита данных
+        controller_a -> psql_primary_a "SQL (read/write)"
+        psql_primary_a -> psql_replica_a "Репликация (внутри региона)"
+        psql_primary_a -> psql_backup_a "Base backup + WAL archive (PITR)"
+
+        // Опционально: DR-копия (межрегионально)
+        psql_backup_a -> s3 "Опционально: кросс-регионная копия бэкапов/WAL"
     }
 
     region_b = region "Region B" {
         load_balancer_b = service "Application LB" {
-            style {
-                icon @icons/network_load_balancer.svg
-            }
+            style { icon @icons/network_load_balancer.svg }
+            description "Региональный L7 балансировщик. Health check: HTTP GET /healthz на Ingress в Region B."
         }
 
         ks_b = service "Kubernetes Cluster" {
-            style {
-                icon @icons/managed_kubernetes.svg
-            }
+            style { icon @icons/managed_kubernetes.svg }
+            description "Независимый кластер в регионе (multi-cluster, не stretched). Масштабирование: HPA; доступность: распределение Pod'ов по зонам (topology spread)."
         }
 
-        ingress_b = service 'Ingress'
-        controller_b = service 'Contreller'
+        ingress_b = service 'Ingress' {
+            description "Входная точка в кластер: маршрутизация /api к сервисам. Экспортирует /healthz для проверок LB."
+        }
+
+        controller_b = service 'Controller' {
+            description "Stateless-компонент. Горизонтальное масштабирование (HPA по CPU/метрикам нагрузки)."
+        }
 
         psql_cluster_b = service "PostgreSQL Cluster" {
+            description "PostgreSQL в регионе: primary + replica. Резервное копирование: full backup + WAL-архив (PITR) в Object Storage."
             psql_primary_b = service "Managed PostgreSQL(primary)" {
-                style {
-                    icon @icons/managed_postgresql.svg
-                }
+                style { icon @icons/managed_postgresql.svg }
+                description "Primary-узел БД (запись)."
             }
             psql_replica_b = service "Managed PostgreSQL(replica)" {
-                style {
-                    icon @icons/managed_postgresql.svg
-                }
+                style { icon @icons/managed_postgresql.svg }
+                description "Replica-узел БД (чтение + источник для быстрого фейловера внутри региона)."
             }
             psql_backup_b = service "Object Storage(backups)" {
-                style {
-                    icon @icons/object_storage.svg
-                }
+                style { icon @icons/object_storage.svg }
+                description "Хранилище бэкапов: base backup + WAL archive для PITR."
             }
         }
-        psql_primary_b -> psql_replica_b 'Replication'
-        psql_replica_b -> psql_backup_b 'Backups + WAL archive'
 
-        yc_dns -> load_balancer_b ''
-        load_balancer_b -> ks_b "Health check"
-        ks_b -> controller_b ''
-        controller_b -> psql_backup_b ''
+        load_balancer_b -> ingress_b "Health check: GET /healthz"
+        ingress_b -> controller_b "HTTP /api"
+
+        controller_b -> psql_primary_b "SQL (read/write)"
+        psql_primary_b -> psql_replica_b "Репликация (внутри региона)"
+        psql_primary_b -> psql_backup_b "Base backup + WAL archive (PITR)"
+
+        psql_backup_b -> s3 "Опционально: кросс-регионная копия бэкапов/WAL"
     }
 
-    user -> yc_dns
-    yc_dns -> cdn
-    yc_dns -> s3
+    user -> yc_dns "DNS-запрос домена приложения"
+    yc_dns -> cdn "Статика через CDN"
+    yc_dns -> s3 "Статика/файлы из Object Storage"
+
+    yc_dns -> region_a.load_balancer_a "DNS/GSLB: Region A (если health check OK)"
+    yc_dns -> region_b.load_balancer_b "DNS/GSLB: Region B (если health check OK)"
 }
 
 views {
