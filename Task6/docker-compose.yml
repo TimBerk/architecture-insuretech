@@ -1,0 +1,21 @@
+services:
+  backend1:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=backend1"]
+  backend2:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=backend2"]
+  backend3:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=backend3"]
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend1
+      - backend2
+      - backend3

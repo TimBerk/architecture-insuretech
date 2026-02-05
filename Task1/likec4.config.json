@@ -1,0 +1,7 @@
+{
+  "$schema": "https://likec4.dev/schemas/config.json",
+  "name": "architecture-insuretech",
+  "imageAliases": {
+    "@icons": "./../icons"
+  }
+}

@@ -1,0 +1,310 @@
+specification {
+
+    color clr-external #6c6577
+    color clr-new #428A4F
+
+    element person {
+        style {
+            shape person
+        }
+    }
+
+    element vm {
+        style {
+            opacity 10%
+        }
+    }
+
+    element browser {
+        style {
+            shape browser
+        }
+    }
+
+    element service {
+        style {
+            opacity 20%
+        }
+    }
+
+    element externalService {
+        style {
+            color clr-external
+        }
+    }
+
+    element broker
+    element topic
+    element outbox
+    element relay
+
+    tag api_request
+    tag out_box
+    tag produce
+    tag consume
+    tag v2
+    tag v3
+}
+
+model {
+    client = person "Клиент"
+
+    insure_tech = vm "InsureTech Prod" {
+        web = browser "Insure Tech Web" {
+            description 'Веб-приложение InsureTech'
+            icon tech:react
+            metadata {
+                language 'JavaScript'
+                framework 'React'
+            }
+        }
+
+        client_info = service "Insure Tech Web" {
+            description 'Сервис для учёта клиентских данных'
+            icon tech:spring
+            metadata {
+                language 'Kotlin'
+                framework 'SpringBoot'
+            }
+        }
+
+
+        ins_comp_settlement_db = service "ins-comp-settlement-db" {
+            description 'БД используется для хранения данных клиентов: ФИО, телефон, паспорт и др. Информация необходима для оформления страховок'
+            icon tech:postgresql
+            metadata {
+                engine 'PostgreSQL'
+            }
+        }
+
+        core_app = service "core-app" {
+            description 'Монолитное приложение:
+                        • отображает данные о доступных страховых продуктах
+                        • оформляет новые страховки
+                        • отображает информацию о купленных страховках'
+            icon tech:spring
+            metadata {
+                language 'Kotlin'
+                framework 'SpringBoot'
+            }
+        }
+
+        core_db = service "core-db" {
+            description 'БД используется для хранения тарифов страховых компаний, а также заявок клиентов на страховые продукты'
+            icon tech:postgresql
+            metadata {
+                engine 'PostgreSQL'
+            }
+        }
+
+        core_outbox_relay = outbox "core-app outbox relay/CDC" {
+            description "Читает outbox в core-db и публикует события в Kafka"
+        }
+
+        ins_product_aggregator = service "ins-product-aggregator" {
+            description 'Сервис для интеграции со страховыми компаниями с целью получения информации по страховым продуктам. Предоставляет единый API для core-app'
+            icon tech:spring
+            metadata {
+                language 'Kotlin'
+                framework 'SpringBoot'
+            }
+        }
+
+        ins_outbox_relay = outbox "ins-product-aggregator outbox relay/CDC" {
+            description "Читает outbox в БД агрегатора и публикует события в Kafka"
+        }
+
+        ins_comp_settlement = service "ins-comp-settlement" {
+            description 'Сервис для осуществления взаиморасчётов со страховыми компаниями'
+            icon tech:spring
+            metadata {
+                language 'Kotlin'
+                framework 'SpringBoot'
+            }
+        }
+
+        broker = broker 'Kafka' {
+            #v2
+
+            description 'Broker'
+            icon tech:kafka
+
+            topic_product_catalog = topic "product.catalog.events" {
+                #v2
+
+                description "События об изменениях продуктов/тарифов (pub/sub)"
+            }
+
+            topic_policy_events = topic "policy.events" {
+                #v2
+
+                description "События об оформлении/изменении полисов"
+            }
+
+            topic_osago_events = topic "osago.quote.events" {
+                #v3
+
+                description "События об оформлении/изменении ОСАГО"
+            }
+        }
+
+        osago_aggregator = service "osago-aggregator" {
+            #v3
+
+            description 'Сервис для работы с заявками ОСАГО'
+            icon tech:spring
+            metadata {
+                language 'Kotlin'
+                framework 'SpringBoot'
+            }
+        }
+
+        osago_aggregator_db = service "osago-aggregator-db" {
+            #v3
+
+            description 'БД используется для хранения ОСАГО'
+            icon tech:postgresql
+            metadata {
+                engine 'PostgreSQL'
+            }
+        }
+
+        osago_outbox_relay = outbox "osago-product-aggregator outbox relay/CDC" {
+            #v3
+
+            description "Читает outbox в БД агрегатора и публикует события в Kafka"
+        }
+    }
+
+    payment = externalService 'Платёжный сервис' {
+        description 'Внешний платёжный сервис, через который осуществляется оплата страховок. Деньги уходят на счета страховых компаний'
+    }
+
+    partners = externalService 'Системы партнёров' {
+        description 'Системы партнёров, интегрирующие страховые услуги в свои продукты'
+
+        style {
+            multiple true
+        }
+    }
+
+    products = externalService 'Системы страховых компаний' {
+        description 'Предоставляют API для получения актуальных тарифов, андерайтинга и оформления страховых продуктов'
+
+        style {
+            multiple true
+        }
+    }
+
+    client -> web
+
+    web -> client_info 'Получение/сохранение информации о клиентах' 'REST'
+    client_info -> ins_comp_settlement_db 'Работа с данными' 'TCP'
+
+    web -> core_app '1. Получения тарифов\n2. Создание заявок на страховки\n3. Создание заявок для ОСАГО' 'REST'
+    core_app -> client_info 'Получение/сохранение информации о клиентах' 'REST'
+    core_app -> core_db 'Работа с данными' 'TCP'
+
+    core_app -> ins_product_aggregator 'Получение информации по продуктам и тарифам' 'REST' {
+        #api_request
+    }
+    ins_comp_settlement -> ins_product_aggregator 'Получение информации по продуктам и тарифам' 'REST' {
+        #api_request
+    }
+    ins_comp_settlement -> core_app 'Получение информации об оформленных страховках' 'REST' {
+        #api_request
+    }
+    ins_comp_settlement -> ins_comp_settlement_db 'Работа с данными' 'TCP'
+
+    web -> payment 'Проведение оплаты за страховки (redirect)' 'REST'
+    core_app -> payment 'Проведение оплаты за страховки' 'HTTP'
+
+    partners -> core_app 'Оформление страховок' 'REST'
+
+    ins_product_aggregator -> products 'Получение информации по продуктам и тарифам' 'REST / SOAP / GraphQL'
+    ins_comp_settlement -> products 'Передача данных для взаиморасчётов' 'REST / SOAP / GraphQL'
+
+    // Task 3
+    ins_product_aggregator -> ins_outbox_relay "Пишет событие в outbox и публикует" "Transactional Outbox" {
+        #out_box
+    }
+    ins_outbox_relay -> topic_product_catalog "Публикация событий Product/Tariff" "Kafka" {
+        #produce
+    }
+
+    core_app -> topic_product_catalog "Подписка: обновление локальной реплики продуктов/тарифов" "Kafka" {
+        #consume
+    }
+    ins_comp_settlement -> topic_product_catalog "Подписка: обновление локальной реплики продуктов/тарифов" "Kafka" {
+        #consume
+    }
+
+    core_app -> core_outbox_relay "Пишет событие в outbox и публикует" "Transactional Outbox" {
+        #out_box
+    }
+    core_outbox_relay -> topic_policy_events "Публикация событий PolicyIssued/PolicyStatusChanged" "Kafka" {
+        #produce
+    }
+
+    ins_comp_settlement -> topic_policy_events "Подписка: формирование реестра взаиморасчётов" "Kafka" {
+        #consume
+    }
+
+    // Task 4
+    core_app -> osago_aggregator 'Создание заявки' 'REST'
+    osago_aggregator -> osago_aggregator_db 'Работа с данными' 'TCP'
+    osago_aggregator -> products 'Запрос предложений' 'REST'
+
+    osago_aggregator -> osago_outbox_relay "Пишет событие в outbox и публикует" "Transactional Outbox" {
+        #out_box
+    }
+    osago_outbox_relay -> topic_osago_events "Публикация событий OsagoQuoteReceived/OsagoInsurerTimedOut/OsagoInsurerFailed" "Kafka" {
+        #produce
+    }
+
+    core_app -> topic_osago_events "Подписка: события по предложениям и статусам страховщиков" "Kafka" {
+        #consume
+    }
+
+
+}
+
+views {
+    view of insure_tech {
+        title 'AS-IS'
+
+        include *, insure_tech
+        exclude insure_tech.broker, element.kind = topic, element.kind = outbox, element.kind = relay
+        exclude * -> * where tag is #api_request, element.tag = #v3
+    }
+
+
+    view of insure_tech {
+        title 'EDA'
+
+        include *, insure_tech, insure_tech.broker.*
+        exclude * -> * where tag is #api_request, element.tag = #v3
+
+        style element.kind = broker, element.kind = topic, element.kind = outbox, element.kind = relay  {
+            color clr-new
+            border dotted
+        }
+
+        style element.tag = #produce, element.tag = #consume  {
+            color clr-new
+            border dashed
+        }
+    }
+
+    view of insure_tech {
+        title 'OSAGO'
+
+        include *, insure_tech, insure_tech.broker.*
+        exclude * -> * where tag is #api_request
+
+        style element.tag = #v3  {
+            color clr-new
+            border dashed
+        }
+    }
+}
